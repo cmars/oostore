@@ -6,11 +6,44 @@ oostore is designed for sharing small amounts of content. In exchange for
 posted content, oostore responds with a macaroon that may be used to retrieve
 or delete the content.
 
-Caveats may then be added to the macaroon received by the content creator,
-before distributing it. Just about any kind of authorization policy imaginable
-should be possible to implement, by adding caveats to opaque content macaroons.
+Caveats may then be added to this macaroon -- which can place all sorts of
+conditions on its validity. Just about any kind of authorization policy
+imaginable should be possible to implement, by adding caveats to opaque content
+macaroons.
 
-# API
+## Macaroons? What?
+For more background on what macaroons are all about and why you might want to
+use them, I recommend:
+* [Macaroons are Better Than Cookies!](http://hackingdistributed.com/2014/05/16/macaroons-are-better-than-cookies/)
+* [Macaroons: Cookies with Contextual Caveats for Decentralized Authorization in the Cloud](https://air.mozilla.org/macaroons-cookies-with-contextual-caveats-for-decentralized-authorization-in-the-cloud/)
+
+First-party caveats currently understood by this service:
+
+### object _object-id_
+Request must operate on this object. oostore will currently add this caveat
+automatically when a new object is created and a macaroon is issued, in response
+so that the creator can manage it, and distribute authorization to others.
+
+### time-before _RFC3339-timestamp_
+Authorization expires after a set time. The timestamp is compared against
+current time on the oostore server. This caveat is provided by the [macaroon-bakery](https://godoc.org/gopkg.in/macaroon-bakery.v1/bakery/checkers).
+
+### client-ip-addr _w.x.y.z_
+Only client requests from a specific IP address are allowed. This caveat is provided by the [macaroon-bakery](https://godoc.org/gopkg.in/macaroon-bakery.v1/bakery/checkers).
+
+Stay tuned as oostore will become much more interesting (and useful, and
+secure) once third-party caveats can be added against discharging services
+designed for use with oostore.
+
+# HTTP API
+Macaroons are given in response to resource creation, and then sent as request
+content for authorization. I feel like this is somewhat unorthodox for a web
+API (usually you'd use cookies, and a 401 challenge-response) but for this use
+case, it seemed appropriate. Plus, cookies have limitations on size, domains,
+etc.
+
+Support for authentication with cookies may be added on later to enable simple
+web clients like browsers, etc. for specific use cases.
 
 ## POST /
 Create a new object.
@@ -75,6 +108,20 @@ EOF
 HTTP/1.1 204 No Content
 Date: Sat, 19 Sep 2015 04:44:36 GMT
 ```
+
+# Build
+
+I recommend using a separate GOPATH for every project, to avoid overlapping
+dependency conflicts.
+
+Get the source & deps with `go get github.com/cmars/oostore`.
+
+In `$GOPATH/src/github.com/cmars/oostore`, run tests with `go test`.
+
+Install the `oostore` binary into `$GOPATH/bin` with `go get github.com/cmars/oostore/cmd/oostore`.
+
+`oostore` only serves HTTP requests. TLS termination with a reverse-proxy is
+recommended for serving over public networks.
 
 # License
 
