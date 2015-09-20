@@ -1,3 +1,6 @@
+[![Build Status](https://travis-ci.org/cmars/oostore.svg?branch=master)](https://travis-ci.org/cmars/oostore)
+[![GoDoc](https://godoc.org/github.com/cmars/oostore?status.svg)](https://godoc.org/github.com/cmars/oostore)
+
 # oostore
 
 An opaque object storage service.
