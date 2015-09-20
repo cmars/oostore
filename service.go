@@ -17,6 +17,8 @@
 package oostore
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -26,13 +28,14 @@ import (
 	"strings"
 
 	"github.com/julienschmidt/httprouter"
-	"gopkg.in/basen.v1"
 	"gopkg.in/errgo.v1"
 	"gopkg.in/macaroon-bakery.v1/bakery"
 	"gopkg.in/macaroon-bakery.v1/bakery/checkers"
 	"gopkg.in/macaroon-bakery.v1/httpbakery"
 	"gopkg.in/macaroon.v1"
 )
+
+const idLen = 32
 
 // Service provides an HTTP API for opaque object storage.
 type Service struct {
@@ -102,6 +105,16 @@ func httpErrorf(w http.ResponseWriter, statusCode int, err error) {
 	log.Printf("HTTP %d: %s", statusCode, errgo.Details(err))
 }
 
+func newID() (string, error) {
+	var fail string
+	var buf [idLen]byte
+	_, err := rand.Read(buf[:])
+	if err != nil {
+		return fail, err
+	}
+	return base64.URLEncoding.EncodeToString(buf[:]), nil
+}
+
 // create handles the request to store new content, responding with a macaroon
 // that can later be used to fetch or delete it.
 func (s *Service) create(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -116,7 +129,7 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request, _ httprouter.Pa
 		contentType = http.DetectContentType(contents)
 	}
 
-	id, err := basen.Base58.Random(32)
+	id, err := newID()
 	if err != nil {
 		httpErrorf(w, http.StatusInternalServerError, errgo.Notef(err, "failed to create an object ID"))
 		return
