@@ -83,7 +83,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 	}
 	s.router = httprouter.New()
 	s.router.POST(prefix, s.create)
-	s.router.POST(path.Join(prefix, ":object"), s.retrieve)
+	s.router.POST(path.Join(prefix, ":object"), s.fetch)
 	s.router.DELETE(path.Join(prefix, ":object"), s.del)
 	return s, nil
 }
@@ -103,7 +103,7 @@ func httpErrorf(w http.ResponseWriter, statusCode int, err error) {
 }
 
 // create handles the request to store new content, responding with a macaroon
-// that can later be used to retrieve or delete it.
+// that can later be used to fetch or delete it.
 func (s *Service) create(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	contents, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -152,29 +152,35 @@ type authInfo struct {
 	declared map[string]string
 }
 
-func (s *Service) checkRequest(r *http.Request, p httprouter.Params) (*authInfo, error) {
+type requestInfo struct {
+	request   *http.Request
+	params    httprouter.Params
+	operation string
+}
+
+func (s *Service) checkRequest(info requestInfo) (*authInfo, error) {
 	var ms macaroon.Slice
-	err := json.NewDecoder(r.Body).Decode(&ms)
+	err := json.NewDecoder(info.request.Body).Decode(&ms)
 	if err != nil {
 		return nil, errgo.Mask(err, errgo.Any)
 	}
 	declared := checkers.InferDeclared(ms)
 	// TODO: assert any declared caveats here
-	err = s.bakery.Check(ms, checkers.New(declared, newCheckers(r, p)))
+	err = s.bakery.Check(ms, checkers.New(declared, newCheckers(info)))
 	if err != nil {
 		return nil, errgo.Mask(err, errgo.Any)
 	}
 
 	return &authInfo{
-		object:   p.ByName("object"),
+		object:   info.params.ByName("object"),
 		declared: declared,
 	}, nil
 }
 
-// retrieve handles the request to retrieve the content authorized by the given
+// fetch handles the request to fetch the content authorized by the given
 // macaroon.
-func (s *Service) retrieve(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-	auth, err := s.checkRequest(r, p)
+func (s *Service) fetch(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+	auth, err := s.checkRequest(requestInfo{request: r, params: p, operation: "fetch"})
 	if err != nil {
 		httpErrorf(w, http.StatusForbidden, err)
 		return
@@ -196,7 +202,7 @@ func (s *Service) retrieve(w http.ResponseWriter, r *http.Request, p httprouter.
 
 // del handles the request to delete content.
 func (s *Service) del(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-	auth, err := s.checkRequest(r, p)
+	auth, err := s.checkRequest(requestInfo{request: r, params: p, operation: "delete"})
 	if err != nil {
 		httpErrorf(w, http.StatusForbidden, err)
 		return
@@ -214,12 +220,12 @@ func (s *Service) del(w http.ResponseWriter, r *http.Request, p httprouter.Param
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func newCheckers(r *http.Request, p httprouter.Params) checkers.Checker {
+func newCheckers(info requestInfo) checkers.Checker {
 	return checkers.New(
 		checkers.TimeBefore,
-		httpbakery.Checkers(r),
-		requestMethodChecker(r),
-		requestObjectChecker(r, p),
+		httpbakery.Checkers(info.request),
+		operationChecker(info.operation),
+		requestObjectChecker(info.request, info.params),
 	)
 }
 
@@ -235,17 +241,17 @@ func requestObjectChecker(r *http.Request, p httprouter.Params) checkers.Checker
 	}
 }
 
-func requestMethodChecker(r *http.Request) checkers.Checker {
+func operationChecker(op string) checkers.Checker {
 	return checkers.CheckerFunc{
-		Condition_: "method",
+		Condition_: "operation",
 		Check_: func(_, cav string) error {
-			allowed := strings.Split(cav, ",")
-			for _, method := range allowed {
-				if strings.TrimSpace(method) == r.Method {
+			allowedOps := strings.Split(cav, ",")
+			for _, allowedOp := range allowedOps {
+				if strings.ToLower(op) == strings.TrimSpace(strings.ToLower(allowedOp)) {
 					return nil
 				}
 			}
-			return fmt.Errorf("method %q not allowed", r.Method)
+			return fmt.Errorf("operation %q not allowed", op)
 		},
 	}
 }

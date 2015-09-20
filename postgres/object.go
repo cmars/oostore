@@ -89,8 +89,22 @@ func (s *objectStorage) Delete(id string) (_err error) {
 		_err = completeTransaction(tx, _err)
 	}()
 
-	_, err = tx.Exec(`DELETE FROM object WHERE id = $1`, id)
-	return errgo.Mask(err, errgo.Any)
+	result, err := tx.Exec(`DELETE FROM object WHERE id = $1`, id)
+	if err != nil {
+		return errgo.Mask(err, errgo.Any)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return errgo.Mask(err, errgo.Any)
+	}
+	switch n {
+	case 0:
+		return oostore.ErrNotFound
+	case 1:
+		return nil
+	default:
+		return errgo.Newf("deleted %d rows, expected 1", n)
+	}
 }
 
 func (s *objectStorage) createIfNotExists() error {

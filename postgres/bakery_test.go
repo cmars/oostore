@@ -61,7 +61,7 @@ func (s *bakerySuite) TestCRUD(c *gc.C) {
 	// Delete locations that don't exist.
 	for _, loc := range []string{"foo", "never-seen-it"} {
 		comment := gc.Commentf("location %q", loc)
-		c.Assert(s.storage.Del("foo"), gc.IsNil, comment)
+		c.Assert(s.storage.Del("foo"), gc.Equals, bakery.ErrNotFound, comment)
 	}
 }
 

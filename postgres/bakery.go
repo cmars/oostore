@@ -83,8 +83,22 @@ func (s *bakeryStorage) Del(location string) (_err error) {
 		_err = completeTransaction(tx, _err)
 	}()
 
-	_, err = tx.Exec(`DELETE FROM bakery WHERE location = $1`, location)
-	return errgo.Mask(err, errgo.Any)
+	result, err := tx.Exec(`DELETE FROM bakery WHERE location = $1`, location)
+	if err != nil {
+		return errgo.Mask(err, errgo.Any)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return errgo.Mask(err, errgo.Any)
+	}
+	switch n {
+	case 0:
+		return bakery.ErrNotFound
+	case 1:
+		return nil
+	default:
+		return errgo.Newf("deleted %d rows, expected 1", n)
+	}
 }
 
 func (s *bakeryStorage) createIfNotExists() error {

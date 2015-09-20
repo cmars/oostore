@@ -48,6 +48,10 @@ func (s memStorage) Put(id string, contents []byte, contentType string) error {
 
 // Delete implements Storage.
 func (s memStorage) Delete(id string) error {
+	_, ok := s[id]
+	if !ok {
+		return ErrNotFound
+	}
 	delete(s, id)
 	return nil
 }

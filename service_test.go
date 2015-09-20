@@ -241,3 +241,80 @@ func (s *serviceSuite) TestClientIPAddr(c *gc.C) {
 			gc.Commentf("client-ip-addr %s", testCase.clientIP))
 	}
 }
+
+func (s *serviceSuite) TestOperationFetchOnly(c *gc.C) {
+	cl := &http.Client{}
+	resp, err := cl.Post(s.server.URL, "something/something", bytes.NewBufferString("hunter2"))
+	c.Assert(err, gc.IsNil)
+	defer resp.Body.Close()
+	c.Assert(resp.StatusCode, gc.Equals, http.StatusOK)
+
+	loc := resp.Header.Get("Location")
+	c.Assert(loc, gc.Not(gc.Equals), "", gc.Commentf("empty location"))
+
+	var mjson bytes.Buffer
+	_, err = io.Copy(&mjson, resp.Body)
+	c.Assert(err, gc.IsNil)
+
+	mjsonDelete := withCaveat(c, mjson.Bytes(), "operation delete")
+	mjsonFetch := withCaveat(c, mjson.Bytes(), "operation fetch")
+	mjsonFetchDelete := withCaveat(c, mjson.Bytes(), "operation fetch,delete")
+
+	for i, testCase := range []struct {
+		desc       string
+		statusCode int
+		auth       []byte
+		method     string
+	}{{
+		desc:       "can't fetch with delete-only auth",
+		statusCode: http.StatusForbidden,
+		auth:       mjsonDelete,
+		method:     "POST",
+	}, {
+		desc:       "can't delete with fetch-only auth",
+		statusCode: http.StatusForbidden,
+		auth:       mjsonFetch,
+		method:     "DELETE",
+	}, {
+		desc:       "fetch with fetch-only auth",
+		statusCode: http.StatusOK,
+		auth:       mjsonFetch,
+		method:     "POST",
+	}, {
+		desc:       "fetch with fetch-delete auth",
+		statusCode: http.StatusOK,
+		auth:       mjsonFetchDelete,
+		method:     "POST",
+	}, {
+		desc:       "delete with delete-only auth",
+		statusCode: http.StatusNoContent,
+		auth:       mjsonDelete,
+		method:     "DELETE",
+	}, {
+		desc:       "delete with fetch-delete auth (already deleted)",
+		statusCode: http.StatusNotFound,
+		auth:       mjsonFetchDelete,
+		method:     "DELETE",
+	}} {
+		comment := gc.Commentf("test#%d: %s", i, testCase.desc)
+		req, err := http.NewRequest(testCase.method, s.server.URL+loc, bytes.NewBuffer(testCase.auth))
+		c.Assert(err, gc.IsNil, comment)
+		resp, err := cl.Do(req)
+		c.Assert(err, gc.IsNil)
+		defer resp.Body.Close()
+		c.Assert(resp.StatusCode, gc.Equals, testCase.statusCode, comment)
+	}
+}
+
+func withCaveat(c *gc.C, buf []byte, cav string) []byte {
+	var ms macaroon.Slice
+	var mjson bytes.Buffer
+	err := json.NewDecoder(bytes.NewBuffer(buf)).Decode(&ms)
+	c.Assert(err, gc.IsNil)
+	c.Assert(ms, gc.HasLen, 1)
+	err = ms[0].AddFirstPartyCaveat(cav)
+	c.Assert(err, gc.IsNil)
+	err = json.NewEncoder(&mjson).Encode(ms)
+	c.Assert(err, gc.IsNil)
+	return mjson.Bytes()
+}

@@ -62,7 +62,7 @@ func (s *objectSuite) TestCRUD(c *gc.C) {
 	// Delete records that don't exist.
 	for _, id := range []string{"foo", "never-seen-it"} {
 		comment := gc.Commentf("id %q", id)
-		c.Check(s.storage.Delete(id), gc.IsNil, comment)
+		c.Check(s.storage.Delete(id), gc.Equals, oostore.ErrNotFound, comment)
 	}
 }
 
