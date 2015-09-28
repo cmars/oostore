@@ -16,24 +16,33 @@
 
 package oostore
 
+import (
+	"sync"
+)
+
 type contentDoc struct {
 	ContentType string
 	Contents    []byte
 }
 
-type memStorage map[string]contentDoc
+type memStorage struct {
+	mu sync.Mutex
+	m  map[string]contentDoc
+}
 
 // NewMemStorage returns a new storage implementation that only keeps things in
 // memory. Primarily useful for testing. Ephemeral storage for production use
 // would probably want to cap memory usage, implement some kind of expiration
 // policy, etc.
 func NewMemStorage() memStorage {
-	return memStorage(make(map[string]contentDoc))
+	return memStorage{m: make(map[string]contentDoc)}
 }
 
 // Get implements Storage.
 func (s memStorage) Get(id string) ([]byte, string, error) {
-	doc, ok := s[id]
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	doc, ok := s.m[id]
 	if !ok {
 		return nil, "", ErrNotFound
 	}
@@ -42,16 +51,20 @@ func (s memStorage) Get(id string) ([]byte, string, error) {
 
 // Put implements Storage.
 func (s memStorage) Put(id string, contents []byte, contentType string) error {
-	s[id] = contentDoc{Contents: contents, ContentType: contentType}
+	s.mu.Lock()
+	s.m[id] = contentDoc{Contents: contents, ContentType: contentType}
+	s.mu.Unlock()
 	return nil
 }
 
 // Delete implements Storage.
 func (s memStorage) Delete(id string) error {
-	_, ok := s[id]
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.m[id]
 	if !ok {
 		return ErrNotFound
 	}
-	delete(s, id)
+	delete(s.m, id)
 	return nil
 }
