@@ -123,9 +123,6 @@ In `$GOPATH/src/github.com/cmars/oostore`, run tests with `go test`.
 
 Install the `oostore` binary into `$GOPATH/bin` with `go get github.com/cmars/oostore/cmd/oostore`.
 
-`oostore` only serves HTTP requests. TLS termination with a reverse-proxy is
-recommended for serving over public networks.
-
 # License
 
 Copyright 2015 Casey Marshall.

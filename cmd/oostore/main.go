@@ -25,23 +25,38 @@ import (
 
 	"github.com/codegangsta/cli"
 	"gopkg.in/errgo.v1"
+	"gopkg.in/tomb.v2"
 
 	"github.com/cmars/oostore"
 	"github.com/cmars/oostore/postgres"
 )
 
 const (
-	defaultAddr = "127.0.0.1:20080"
+	defaultHTTP  = "127.0.0.1:20080"
+	defaultHTTPS = ":20443"
 )
 
 func main() {
 	app := cli.NewApp()
 	app.Name = "oostore"
-	app.Usage = "oostore [--addr ADDR] [--prefix PREFIX] [database connect string]"
+	app.Usage = "Opaque Object Storage Service"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name:  "addr",
-			Value: defaultAddr,
+			Name:  "http",
+			Value: defaultHTTP,
+			Usage: "HTTP listen address",
+		},
+		cli.StringFlag{
+			Name:  "https",
+			Usage: "HTTPS listen address",
+		},
+		cli.StringFlag{
+			Name:  "cert",
+			Usage: "TLS certificate and certification chain, PEM encoded",
+		},
+		cli.StringFlag{
+			Name:  "key",
+			Usage: "TLS private key, PEM encoded",
 		},
 		cli.StringFlag{
 			Name: "prefix",
@@ -72,12 +87,40 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to create service: %s", errgo.Details(err))
 		}
-		addr := c.String("addr")
-		log.Printf("listening for requests on %s", addr)
-		err = http.ListenAndServe(addr, service)
-		if err != nil {
-			log.Fatalf("server error: %s", errgo.Details(err))
+
+		var t tomb.Tomb
+
+		httpAddr := c.String("http")
+		if httpAddr != "" {
+			t.Go(func() error {
+				log.Printf("listening for HTTP requests on %q", httpAddr)
+				err := http.ListenAndServe(httpAddr, service)
+				if err != nil {
+					log.Fatalf("server error: %s", errgo.Details(err))
+				}
+				return err
+			})
 		}
+		httpsAddr := c.String("https")
+		if httpsAddr != "" {
+			t.Go(func() error {
+				certFile := c.String("cert")
+				if certFile == "" {
+					log.Fatalf("missing --cert flag")
+				}
+				keyFile := c.String("key")
+				if keyFile == "" {
+					log.Fatalf("missing --key flag")
+				}
+				log.Printf("listening for HTTPS requests on %q", httpsAddr)
+				err := http.ListenAndServeTLS(httpsAddr, certFile, keyFile, service)
+				if err != nil {
+					log.Fatalf("server error: %s", errgo.Details(err))
+				}
+				return err
+			})
+		}
+		t.Wait()
 	}
 	app.Run(os.Args)
 }
